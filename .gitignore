@@ -1,0 +1,4 @@
+*.o
+animationcreator
+.DS_Store
+frames/
