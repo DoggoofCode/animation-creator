@@ -13,21 +13,44 @@ typedef struct {
 typedef struct {
 	int x;
 	int y;
-	int z;
+} ScreenPosition;
+
+typedef struct {
+	float x;
+	float y;
+	float z;
 } Point;
 
+typedef struct {
+	Point* point_ptr;
+	int point_count;
+} PointCloud;
+
 void create_ppm(Pixel*, int);
-Pixel* create_pixel_buf(int);
+Pixel* create_pixel_buf(PointCloud*, int);
+int pixel_offset(int x, int y);
+ScreenPosition virtual_to_real_screen(float x, float y);
+
 
 int main(int argc, char** argv)
 {
-	for (int frame_count = 0; frame_count < 100; frame_count++)
+	PointCloud points;
+	points.point_count = 2;
+	points.point_ptr = calloc(points.point_count, sizeof(Point));
+	
+	*points.point_ptr = (Point){-2., 0., 5.};
+	*(points.point_ptr+1) = (Point){2., 2., 10.};
+
+	for (int frame_count = 0; frame_count < 10; frame_count++)
 	{
+		printf("Refactoring point cloud for frame %d...\n", frame_count);
+		// TODO: Active refactoring for point cloud
 		printf("Creating pixel buff for frame %d...\n", frame_count);
-		Pixel* buf = create_pixel_buf(frame_count);
+		Pixel* buf = create_pixel_buf(&points, frame_count);
 		printf("Creating file for frame %d...\n", frame_count);
 		create_ppm(buf, frame_count);
 	}
+	free(points.point_ptr);
 	return 0;
 }
 
@@ -59,21 +82,49 @@ void create_ppm(Pixel* image_buffer, int frame_index)
 
 }
 
-Pixel* create_pixel_buf(int frame_index)
+Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index)
 {
+
 	Pixel* pixel_buffer = calloc(VIDEO_WIDTH * VIDEO_HEIGHT, sizeof(Pixel));
-	Pixel* pixel_ptr = pixel_buffer; 
-	for (int y_pixel = 0; y_pixel < VIDEO_HEIGHT; y_pixel++)
+	// Pixel* pixel_ptr = pixel_buffer;
+	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
 	{
-		for (int x_pixel = 0; x_pixel < VIDEO_WIDTH; x_pixel++)
+		Point current_point = point_cloud->point_ptr[point_index];
+		float screen_x = current_point.x / current_point.z;
+		float screen_y = current_point.y / current_point.z;
+		ScreenPosition screen = virtual_to_real_screen(screen_x, screen_y);
+		for (int x_off = -15; x_off < 15; x_off++)
 		{
-			pixel_ptr->r = 255*((float)((x_pixel-10*frame_index)%1000) / VIDEO_WIDTH);
-			pixel_ptr->g = 255*((float)((y_pixel-10*frame_index)%1000) / VIDEO_HEIGHT);
-			pixel_ptr->b = 0;
-			pixel_ptr++;
-			
+			for (int y_off = -15; y_off < 15; y_off++)
+			{
+				if (x_off*x_off + y_off*y_off <= 225)
+				{
+					*(pixel_buffer + pixel_offset(screen.x+x_off, screen.y+y_off)) = (Pixel){255, 255, 255};
+				}
+			}
 		}
 	}
+	// for (int y_pixel = 0; y_pixel < VIDEO_HEIGHT; y_pixel++)
+	// {
+	// 	for (int x_pixel = 0; x_pixel < VIDEO_WIDTH; x_pixel++)
+	// 	{
+	// 		pixel_ptr->r = 255*((float)(x_pixel) / VIDEO_WIDTH);
+	// 		pixel_ptr->g = 255*((float)(y_pixel) / VIDEO_HEIGHT);
+	// 		pixel_ptr->b = 128;
+	// 		pixel_ptr++;
+	// 		
+	// 	}
+	// }
 	return pixel_buffer;
+}
+
+int pixel_offset(int x, int y)
+{
+	return x + (y * VIDEO_HEIGHT);
+}
+
+ScreenPosition virtual_to_real_screen(float x, float y)
+{
+	return (ScreenPosition){(x+1) * VIDEO_WIDTH / 2, ((-y)+1)* VIDEO_HEIGHT / 2};
 }
 
