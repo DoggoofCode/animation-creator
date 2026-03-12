@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 
 #define VIDEO_WIDTH 1000
@@ -9,6 +10,7 @@ typedef struct {
 	int r;
 	int g;
 	int b;
+	float z_index;
 } Pixel;
 
 typedef struct {
@@ -28,7 +30,7 @@ typedef struct {
 } PointCloud;
 
 void create_ppm(Pixel*, int);
-Pixel* create_pixel_buf(PointCloud*, int, Point*);
+void create_pixel_buf(PointCloud*, int, Point*, Pixel*);
 int pixel_offset(int x, int y);
 ScreenPosition virtual_to_real_screen(float x, float y);
 Point rotate_x(Point p, float theta);
@@ -54,15 +56,19 @@ int main(int argc, char** argv)
 	*(points.point_ptr+6) = (Point){-2., -2., -2.};
 	*(points.point_ptr+7) = (Point){-2., -2., 2.};
 
+	Pixel* pixel_buffer = calloc(VIDEO_WIDTH * VIDEO_HEIGHT, sizeof(Pixel));
+
 	for (int frame_count = 0; frame_count < 30*10; frame_count++)
 	{
 		printf("Refactoring point cloud for frame %d...\n", frame_count);
 		// TODO: Active refactoring for point cloud
 		printf("Creating pixel buff for frame %d...\n", frame_count);
-		Pixel* buf = create_pixel_buf(&points, frame_count, &CameraPosition);
+		create_pixel_buf(&points, frame_count, &CameraPosition, pixel_buffer);
 		printf("Creating file for frame %d...\n", frame_count);
-		create_ppm(buf, frame_count);
+		create_ppm(pixel_buffer, frame_count);
+		memset(pixel_buffer, 0, VIDEO_WIDTH * VIDEO_HEIGHT * sizeof(Pixel));
 	}
+	free(pixel_buffer);
 	free(points.point_ptr);
 	return 0;
 }
@@ -91,14 +97,11 @@ void create_ppm(Pixel* image_buffer, int frame_index)
 	}
 
 	fclose(fptr);
-	free(image_buffer);
 
 }
 
-Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_position)
+void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_position, Pixel* pixel_buffer)
 {
-
-	Pixel* pixel_buffer = calloc(VIDEO_WIDTH * VIDEO_HEIGHT, sizeof(Pixel));
 	
 	// TODO: Move to its own function
 	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
@@ -129,14 +132,17 @@ Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_
 				
 				if (buffer_offset == -1)
 					continue;
+				
+				if ((pixel_buffer + buffer_offset)->z_index != 0 && (pixel_buffer + buffer_offset)->z_index < current_point.z)
+					continue;
 
 				if (alias_percent < 0.9)
 				{
-					*(pixel_buffer + buffer_offset) = (Pixel){255, 255, 255};
+					*(pixel_buffer + buffer_offset) = (Pixel){255, 255, 255, current_point.z};
 				} else if (alias_percent < 1.)
 				{
 					greyscale_size = 250 - 2500*(alias_percent - .9);
-					*(pixel_buffer + buffer_offset) = (Pixel){greyscale_size, greyscale_size, greyscale_size};
+					*(pixel_buffer + buffer_offset) = (Pixel){greyscale_size, greyscale_size, greyscale_size, current_point.z};
 				}
 
 				// if (x_off*x_off + y_off*y_off <= (14*14) * pow(10 / current_point.z, 2) && buffer_offset != -1)
@@ -150,7 +156,6 @@ Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_
 			}
 		}
 	}
-	return pixel_buffer;
 }
 
 int pixel_offset(int x, int y)
