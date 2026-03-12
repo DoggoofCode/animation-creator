@@ -28,7 +28,7 @@ typedef struct {
 } PointCloud;
 
 void create_ppm(Pixel*, int);
-Pixel* create_pixel_buf(PointCloud*, int);
+Pixel* create_pixel_buf(PointCloud*, int, Point*);
 int pixel_offset(int x, int y);
 ScreenPosition virtual_to_real_screen(float x, float y);
 Point rotate_x(Point p, float theta);
@@ -38,19 +38,28 @@ Point rotate_z(Point p, float theta);
 
 int main(int argc, char** argv)
 {
+
+	Point CameraPosition = {0., 0., -5};
+
 	PointCloud points;
-	points.point_count = 2;
+	points.point_count = 8;
 	points.point_ptr = calloc(points.point_count, sizeof(Point));
 	
-	*points.point_ptr = (Point){-2., 0., 5.};
-	*(points.point_ptr+1) = (Point){2., 2., 10.};
+	*points.point_ptr = (Point){2., 2., 2.};
+	*(points.point_ptr+1) = (Point){2., 2., -2.};
+	*(points.point_ptr+2) = (Point){-2., 2., -2.};
+	*(points.point_ptr+3) = (Point){-2., 2., 2.};
+	*(points.point_ptr+4) = (Point){2., -2., 2.};
+	*(points.point_ptr+5) = (Point){2., -2., -2.};
+	*(points.point_ptr+6) = (Point){-2., -2., -2.};
+	*(points.point_ptr+7) = (Point){-2., -2., 2.};
 
-	for (int frame_count = 0; frame_count < 50; frame_count++)
+	for (int frame_count = 0; frame_count < 30*10; frame_count++)
 	{
 		printf("Refactoring point cloud for frame %d...\n", frame_count);
 		// TODO: Active refactoring for point cloud
 		printf("Creating pixel buff for frame %d...\n", frame_count);
-		Pixel* buf = create_pixel_buf(&points, frame_count);
+		Pixel* buf = create_pixel_buf(&points, frame_count, &CameraPosition);
 		printf("Creating file for frame %d...\n", frame_count);
 		create_ppm(buf, frame_count);
 	}
@@ -86,7 +95,7 @@ void create_ppm(Pixel* image_buffer, int frame_index)
 
 }
 
-Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index)
+Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_position)
 {
 
 	Pixel* pixel_buffer = calloc(VIDEO_WIDTH * VIDEO_HEIGHT, sizeof(Pixel));
@@ -96,23 +105,48 @@ Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index)
 	{
 		// Rotates all points around the z axis by 1 degree
 		point_cloud->point_ptr[point_index] = rotate_z(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
+		point_cloud->point_ptr[point_index] = rotate_y(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
 	}
 
 	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
 	{
 		Point current_point = point_cloud->point_ptr[point_index];
+		current_point.z -= camera_position->z;
 		float screen_x = current_point.x / current_point.z;
 		float screen_y = current_point.y / current_point.z;
 		ScreenPosition screen = virtual_to_real_screen(screen_x, screen_y);
-		int display_size = 30 * (10 / current_point.z);
+		int display_size = 30 * (10 / sqrt(current_point.z));
+		int buffer_offset, greyscale_size;
+		float length_from_outside, circle_squared, alias_percent;
+		printf("Frame: %d, Point#: %d, Screen Pos: (%f\x1b[2m[x: %f z: %f]\x1b[0m %f\x1b[2m[y: %f z: %f]\x1b[0m)\n", frame_index, point_index, screen_x, current_point.x, current_point.z, screen_y, current_point.y, current_point.z);
 		for (int x_off = -display_size / 2; x_off < display_size / 2; x_off++)
 		{
 			for (int y_off = -display_size / 2; y_off < display_size / 2; y_off++)
 			{
-				if (x_off*x_off + y_off*y_off <= 225 * (10 / current_point.z))
+				buffer_offset = pixel_offset(screen.x+x_off, screen.y+y_off);
+				circle_squared = (16*16) * pow(10 / current_point.z, 2);
+				alias_percent = (x_off*x_off + y_off*y_off) / circle_squared;
+				
+				if (buffer_offset == -1)
+					continue;
+
+				if (alias_percent < 0.9)
 				{
-					*(pixel_buffer + pixel_offset(screen.x+x_off, screen.y+y_off)) = (Pixel){255, 255, 255};
+					*(pixel_buffer + buffer_offset) = (Pixel){255, 255, 255};
+				} else if (alias_percent < 1.)
+				{
+					greyscale_size = 250 - 2500*(alias_percent - .9);
+					*(pixel_buffer + buffer_offset) = (Pixel){greyscale_size, greyscale_size, greyscale_size};
 				}
+
+				// if (x_off*x_off + y_off*y_off <= (14*14) * pow(10 / current_point.z, 2) && buffer_offset != -1)
+				// {
+				// } else if (x_off*x_off + y_off*y_off <= (16*16) * pow(10 / current_point.z, 2) && buffer_offset != -1)
+				// {
+				// 	length_from_outside = sqrt((x_off*x_off + y_off*y_off) / pow(10 / current_point.z, 2));
+				// 	length_from_outside = (16 - length_from_outside) / 2;
+				// 	// *(pixel_buffer + buffer_offset) = (Pixel){(int)length_from_outside*200, (int)length_from_outside*200, (int)length_from_outside*200};
+				// }
 			}
 		}
 	}
@@ -121,7 +155,9 @@ Pixel* create_pixel_buf(PointCloud* point_cloud, int frame_index)
 
 int pixel_offset(int x, int y)
 {
-	return x + (y * VIDEO_HEIGHT);
+	if (0 <= x && x <= VIDEO_WIDTH && 0 <= y && y <= VIDEO_HEIGHT)
+		return x + (y * VIDEO_HEIGHT);
+	return -1;
 }
 
 ScreenPosition virtual_to_real_screen(float x, float y)
