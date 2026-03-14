@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -46,7 +47,7 @@ int main(int argc, char** argv)
 	PointCloud points;
 	points.point_count = 8;
 	points.point_ptr = calloc(points.point_count, sizeof(Point));
-	
+
 	*points.point_ptr = (Point){2., 2., 2.};
 	*(points.point_ptr+1) = (Point){2., 2., -2.};
 	*(points.point_ptr+2) = (Point){-2., 2., -2.};
@@ -75,34 +76,49 @@ int main(int argc, char** argv)
 
 void create_ppm(Pixel* image_buffer, int frame_index)
 {
-	Pixel* pixel_ptr = image_buffer; 
+	Pixel* pixel_ptr = image_buffer;
 	char filename[100];
 	snprintf(filename, sizeof(filename), "frames/frame-%02d.ppm", frame_index);
 
 	FILE *fptr = fopen(filename, "w");
 
-	int r, g, b;
 	fprintf(fptr, "P3\n%d %d\n255\n", VIDEO_WIDTH, VIDEO_HEIGHT);
+
+	// Buffer for the entire row's string
+	char* frame_char_buffer = calloc(VIDEO_HEIGHT*VIDEO_WIDTH*12+1, sizeof(char));
+
+    char single_pixel_character_buffer[13];
+    size_t single_char_strlen;
+
+   	char* frame_char_buffer_pointer = frame_char_buffer;
 	for (int y_pixel = 0; y_pixel < VIDEO_HEIGHT; y_pixel++)
 	{
 		for (int x_pixel = 0; x_pixel < VIDEO_WIDTH; x_pixel++)
 		{
-			r = pixel_ptr->r;
-			g = pixel_ptr->g;
-			b = pixel_ptr->b;
-			fprintf(fptr, "%d %d %d ", r, g, b);
+		    // Resets and adds a single pixels string into single_pixel_character_buffer
+    		memset(single_pixel_character_buffer, 0, sizeof(single_pixel_character_buffer));
+            snprintf(single_pixel_character_buffer, sizeof(single_pixel_character_buffer), "%d %d %d ", pixel_ptr->r, pixel_ptr->g, pixel_ptr->b);
+            single_char_strlen = strlen(single_pixel_character_buffer);
+
+            // Updates the entire rows position buffer then copies single_pixel into it
+    		strncpy(frame_char_buffer_pointer, single_pixel_character_buffer, single_char_strlen);
+
+            frame_char_buffer_pointer += single_char_strlen;
 			pixel_ptr++;
 		}
-		fprintf(fptr, "\n");
+		*(frame_char_buffer_pointer++) = '\n';
+		// frame_char_buffer_pointer++;
 	}
+	fprintf(fptr, "%s", frame_char_buffer);
 
+	free(frame_char_buffer);
 	fclose(fptr);
 
 }
 
 void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_position, Pixel* pixel_buffer)
 {
-	
+
 	// TODO: Move to its own function
 	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
 	{
@@ -129,10 +145,10 @@ void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_po
 				buffer_offset = pixel_offset(screen.x+x_off, screen.y+y_off);
 				circle_squared = (16*16) * pow(10 / current_point.z, 2);
 				alias_percent = (x_off*x_off + y_off*y_off) / circle_squared;
-				
+
 				if (buffer_offset == -1)
 					continue;
-				
+
 				if ((pixel_buffer + buffer_offset)->z_index != 0 && (pixel_buffer + buffer_offset)->z_index < current_point.z)
 					continue;
 
@@ -144,15 +160,6 @@ void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_po
 					greyscale_size = 250 - 2500*(alias_percent - .9);
 					*(pixel_buffer + buffer_offset) = (Pixel){greyscale_size, greyscale_size, greyscale_size, current_point.z};
 				}
-
-				// if (x_off*x_off + y_off*y_off <= (14*14) * pow(10 / current_point.z, 2) && buffer_offset != -1)
-				// {
-				// } else if (x_off*x_off + y_off*y_off <= (16*16) * pow(10 / current_point.z, 2) && buffer_offset != -1)
-				// {
-				// 	length_from_outside = sqrt((x_off*x_off + y_off*y_off) / pow(10 / current_point.z, 2));
-				// 	length_from_outside = (16 - length_from_outside) / 2;
-				// 	// *(pixel_buffer + buffer_offset) = (Pixel){(int)length_from_outside*200, (int)length_from_outside*200, (int)length_from_outside*200};
-				// }
 			}
 		}
 	}
@@ -167,7 +174,7 @@ int pixel_offset(int x, int y)
 
 ScreenPosition virtual_to_real_screen(float x, float y)
 {
-	return (ScreenPosition){(x+1) * VIDEO_WIDTH / 2, ((-y)+1)* VIDEO_HEIGHT / 2};
+	return (ScreenPosition){(x+1) * VIDEO_WIDTH / 2, (1-y)* VIDEO_HEIGHT / 2};
 }
 
 Point rotate_x(Point p, float theta) {
@@ -199,4 +206,3 @@ Point rotate_z(Point p, float theta) {
 
     return r;
 }
-
