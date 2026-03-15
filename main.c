@@ -32,6 +32,7 @@ typedef struct {
 
 void create_ppm(Pixel*, int);
 void create_pixel_buf(PointCloud*, int, Point*, Pixel*);
+void scene_transformations(PointCloud*);
 int pixel_offset(int x, int y);
 ScreenPosition virtual_to_real_screen(float x, float y);
 Point rotate_x(Point p, float theta);
@@ -62,7 +63,7 @@ int main(int argc, char** argv)
 	for (int frame_count = 0; frame_count < 30*10; frame_count++)
 	{
 		printf("Refactoring point cloud for frame %d...\n", frame_count);
-		// TODO: Active refactoring for point cloud
+		scene_transformations(&points);
 		printf("Creating pixel buff for frame %d...\n", frame_count);
 		create_pixel_buf(&points, frame_count, &CameraPosition, pixel_buffer);
 		printf("Creating file for frame %d...\n", frame_count);
@@ -119,14 +120,6 @@ void create_ppm(Pixel* image_buffer, int frame_index)
 void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_position, Pixel* pixel_buffer)
 {
 
-	// TODO: Move to its own function
-	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
-	{
-		// Rotates all points around the z axis by 1 degree
-		point_cloud->point_ptr[point_index] = rotate_z(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
-		point_cloud->point_ptr[point_index] = rotate_y(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
-	}
-
 	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
 	{
 		Point current_point = point_cloud->point_ptr[point_index];
@@ -164,6 +157,18 @@ void create_pixel_buf(PointCloud* point_cloud, int frame_index, Point* camera_po
 		}
 	}
 }
+
+
+void scene_transformations(PointCloud* point_cloud)
+{
+	for (int point_index = 0; point_index < point_cloud->point_count; point_index++)
+	{
+		// Rotates all points around the z axis by 1 degree
+		point_cloud->point_ptr[point_index] = rotate_z(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
+		point_cloud->point_ptr[point_index] = rotate_y(point_cloud->point_ptr[point_index], 1 * (3.14159 / 180));
+	}
+}
+
 
 int pixel_offset(int x, int y)
 {
